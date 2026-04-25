@@ -1,36 +1,75 @@
 apiVersion: apps/v1
-kind: deployment
-metadata: 
-  name: bloggingapp-deployment
-spec: 
-  selector: 
-    matchLables: 
-      app: bloggingapp
-  replicas: 2
-  template:
-    matchLabels: 
-      app: bloggingapp
-    spec: 
-      container: 
-        - name: bloggingapp
-          image: sror/blogging-app:latest # Updated image to private DockerHub image
-          imagePullPolicy: always
-          ports: 
-            containerPort:  8080
-      imagePullSecret: 
-        - name: regcred # Reference to the Docker registry secret
-
---- 
-apiVersion: v1
-kind: service
+kind: Deployment
 metadata:
-  name: bloggingapp-ssvc
-spec: 
-  selector: 
-    matchLables: 
+  name: bloggingapp-deployment
+  namespace: webapps
+  labels:
+    app: bloggingapp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
       app: bloggingapp
-    ports: 
-      - protocol: "TCP"
-        port: 80
-        targetPort: 8080 
-    type: LoadBalancer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: bloggingapp
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: bloggingapp
+          image: sror/blogging-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
+          env:
+            - name: SPRING_PROFILES_ACTIVE    # adjust/remove to your stack
+              value: "prod"
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bloggingapp-svc
+  namespace: webapps
+  labels:
+    app: bloggingapp
+spec:
+  type: LoadBalancer
+  selector:
+    app: bloggingapp
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
